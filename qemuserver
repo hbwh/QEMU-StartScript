@@ -1,0 +1,110 @@
+#!/bin/bash
+# /etc/init.d/qemuserver
+# version 0.0.1 2015-04-07 (YYYY-MM-DD)
+ 
+### BEGIN INIT INFO
+# Provides:   qemuserver
+# Required-Start: $local_fs $remote_fs screen-cleanup
+# Required-Stop:  $local_fs $remote_fs
+# Should-Start:   $network
+# Should-Stop:    $network
+# Default-Start:  2 3 4 5
+# Default-Stop:   0 1 6
+# Short-Description:    qemu server
+# Description:    Start the qemu server
+### END INIT INFO
+ 
+#Settings
+Service="w2k398m"
+Type="system-i386"
+UserName="joe"
+VNCPassword="123456"
+Mem="256"
+ImgPath="/home/$UserName"
+ImgName="w2k3.qcow2"
+MonitorPort="7100"
+Net="-net nic,model=virtio -net user"
+Drive="-drive file=${ImgPath}/${ImgName},index=0,media=disk,cache=writeback"
+
+Options="-name $Service -m $Mem -vga qxl -display vnc=:0,password \
+ -monitor telnet:localhost:${MonitorPort},server,nowait,nodelay \
+ -usbdevice tablet -localtime -daemonize $Net "
+
+Me=`whoami`
+as_user() {
+  if [ $Me == $UserName ] ; then
+    bash -c "$1"
+  else
+    su - $UserName -c "$1"
+  fi
+}
+
+Service_start() {
+  if  pgrep -u $UserName -f "name $Service" > /dev/null
+  then
+    echo "$Service is run！"
+  else
+    echo "Start $Service..."
+    as_user "cd $ImgPath && /usr/bin/qemu-${Type} $Options"
+    sleep 7
+    if pgrep -u $UserName -f "name $Service" > /dev/null
+      then
+        echo "set_password vnc $VNCPassword" | nc localhost $MonitorPort
+        echo "$Service is run now!"
+      else
+        echo "错误！无法启动 $Service！"
+    fi
+  fi
+}
+ 
+Service_halt() {
+  if  pgrep -u $UserName -f "name $Service" > /dev/null
+  then
+    echo "Stop $Service."
+    as_user "echo 'system_powerdown' | nc localhost $MonitorPort"
+    sync && sleep 10
+  else
+    echo "$Service is not run!"
+  fi
+  if  pgrep -u $UserName -f "name $Service" > /dev/null
+  then
+    echo "Error! $Service is not halt."
+  else
+    echo "$Service is halt."
+  fi
+}
+
+Service_stop() {
+  if  pgrep -u $UserName -f "name $Service" > /dev/null
+  then
+    echo "Stop $Service."
+    as_user "echo 'quit' | nc localhost $MonitorPort"
+    sync && sleep 3
+  else
+    echo "$Service is not run!"
+  fi
+  if  pgrep -u $UserName -f "name $Service" > /dev/null
+  then
+    kill -s 9 `pgrep -u $UserName -f "name $Service"`
+  else
+    echo "$Service is stop!"
+  fi
+}
+
+#Start-Stop here
+case "$1" in
+  start)
+    Service_start
+    ;;
+  halt)
+    Service_halt
+    ;;
+  stop)
+    Service_quit
+    ;;
+  *)
+    echo "使用方法： $0 {start|stop|halt}"
+    exit 1
+    ;;
+esac
+exit 0

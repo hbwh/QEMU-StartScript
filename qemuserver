@@ -1,72 +1,65 @@
-#!/bin/bash
+#!/bin/sh
 # /etc/init.d/qemuserver
-# version 0.0.1 2015-04-07 (YYYY-MM-DD)
+# version 2015-04-08
  
 ### BEGIN INIT INFO
-# Provides:   qemuserver
-# Required-Start: $local_fs $remote_fs screen-cleanup
-# Required-Stop:  $local_fs $remote_fs
-# Should-Start:   $network
-# Should-Stop:    $network
-# Default-Start:  2 3 4 5
-# Default-Stop:   0 1 6
-# Short-Description:    qemu server
-# Description:    Start the qemu server
+# Provides:         qemuserver
+# Required-Start:   $local_fs $remote_fs
+# Required-Stop:    $local_fs $remote_fs
+# Should-Start:     $network
+# Should-Stop:      $network
+# Default-Start:    2 3 4 5
+# Default-Stop:     0 1 6
+# Short-Description:qemu server
+# Description:      Start the qemu server
 ### END INIT INFO
  
 #Settings
-Service="w2k398m"
-Type="system-i386"
-UserName="joe"
-VNCPassword="123456"
-Mem="256"
-ImgPath="/home/$UserName"
-ImgName="w2k3.qcow2"
-MonitorPort="7100"
-Net="-net nic,model=virtio -net user"
-Drive="-drive file=${ImgPath}/${ImgName},index=0,media=disk,cache=writeback"
+Service=w2k398m
+Type=system-i386
+VNCPassword=123456
+Mem=256
+ImgPath=/srv/vm
+MonitorPort=7100
+VNCDisplay=0
 
-Options="-name $Service -m $Mem -vga qxl -display vnc=:0,password \
- -monitor telnet:localhost:${MonitorPort},server,nowait,nodelay \
- -usbdevice tablet -localtime -daemonize $Net "
+Drive="-drive file=${ImgPath}/os,index=0,media=disk,cache=writeback \
+ -drive file=${ImgPath}/data,index=1,media=disk,cache=writeback"
 
-Me=`whoami`
-as_user() {
-  if [ $Me == $UserName ] ; then
-    bash -c "$1"
-  else
-    su - $UserName -c "$1"
-  fi
-}
+Options="-name $Service -m $Mem -display vnc=:${VNCDisplay},password \
+ -monitor telnet:localhost:${MonitorPort},server,nowait,nodelay $Drive \
+ -usbdevice tablet -localtime -net nic,model=virtio -net user -daemonize"
 
 Service_start() {
-  if  pgrep -u $UserName -f "name $Service" > /dev/null
+  if pgrep -f "name $Service" > /dev/null
   then
     echo "$Service is run！"
   else
     echo "Start $Service..."
-    as_user "cd $ImgPath && /usr/bin/qemu-${Type} $Options"
-    sleep 7
-    if pgrep -u $UserName -f "name $Service" > /dev/null
+    /usr/bin/qemu-$Type \
+ -name $Service -m $Mem $Drive -display vnc=:${VNCDisplay},password \
+ -monitor telnet:localhost:${MonitorPort},server,nowait,nodelay \
+ -usbdevice tablet -localtime -net nic,model=virtio -net user -daemonize
+    sleep 3
+    if pgrep -f "name $Service" > /dev/null
       then
         echo "set_password vnc $VNCPassword" | nc localhost $MonitorPort
         echo "$Service is run now!"
       else
-        echo "错误！无法启动 $Service！"
+        echo "Error! Can not start $Service！"
     fi
   fi
 }
  
 Service_halt() {
-  if  pgrep -u $UserName -f "name $Service" > /dev/null
+  if pgrep -f "name $Service" > /dev/null
   then
-    echo "Stop $Service."
-    as_user "echo 'system_powerdown' | nc localhost $MonitorPort"
+    echo 'system_powerdown' | nc localhost $MonitorPort
     sync && sleep 10
   else
     echo "$Service is not run!"
   fi
-  if  pgrep -u $UserName -f "name $Service" > /dev/null
+  if pgrep -f "name $Service" > /dev/null
   then
     echo "Error! $Service is not halt."
   else
@@ -75,36 +68,30 @@ Service_halt() {
 }
 
 Service_stop() {
-  if  pgrep -u $UserName -f "name $Service" > /dev/null
+  if pgrep -f "name $Service" > /dev/null
   then
-    echo "Stop $Service."
-    as_user "echo 'quit' | nc localhost $MonitorPort"
-    sync && sleep 3
+    kill -s 9 `pgrep -f "name $Service"`
+    echo "$Service is stop!"
   else
     echo "$Service is not run!"
-  fi
-  if  pgrep -u $UserName -f "name $Service" > /dev/null
-  then
-    kill -s 9 `pgrep -u $UserName -f "name $Service"`
-  else
-    echo "$Service is stop!"
   fi
 }
 
 #Start-Stop here
 case "$1" in
   start)
-    Service_start
-    ;;
+        Service_start
+        ;;
   halt)
-    Service_halt
-    ;;
+        Service_halt
+        ;;
   stop)
-    Service_quit
-    ;;
+        Service_stop
+        ;;
   *)
-    echo "使用方法： $0 {start|stop|halt}"
-    exit 1
-    ;;
+        echo "Usage: $0 {start|stop|halt}" >&2
+        exit 1
+        ;;
 esac
+
 exit 0
